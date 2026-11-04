@@ -1,0 +1,6 @@
+# Secrets and large downloads must never be committed
+group_vars/all/vault.yml
+.vault_pass
+*.tgz
+*.retry
+.ansible/

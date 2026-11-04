@@ -1,0 +1,16 @@
+---
+- name: Restart Splunk forwarder (systemd)
+  ansible.builtin.systemd:
+    name: SplunkForwarder
+    state: restarted
+  when: splunk_uf_enable_boot_start | bool
+  listen: Restart Splunk forwarder
+
+- name: Restart Splunk forwarder (no systemd)
+  ansible.builtin.command:
+    cmd: "{{ splunk_uf_install_dir }}/bin/splunk restart"
+  become: true
+  become_user: "{{ splunk_uf_user }}"
+  changed_when: true
+  when: not (splunk_uf_enable_boot_start | bool)
+  listen: Restart Splunk forwarder

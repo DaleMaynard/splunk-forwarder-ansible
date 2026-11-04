@@ -1,0 +1,7 @@
+---
+- name: Deploy and configure the Splunk Universal Forwarder
+  hosts: forwarders
+  become: true
+  gather_facts: true
+  roles:
+    - role: splunk_uf

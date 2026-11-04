@@ -1,0 +1,8 @@
+# Managed by Ansible. Do not edit by hand; changes will be overwritten.
+{% for m in splunk_uf_monitors %}
+[monitor://{{ m.path }}]
+index = {{ m.index }}
+sourcetype = {{ m.sourcetype }}
+disabled = 0
+
+{% endfor %}

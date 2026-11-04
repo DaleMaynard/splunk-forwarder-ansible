@@ -1,0 +1,6 @@
+---
+# Copy this to vault.yml, set a real password (8+ characters), then encrypt it:
+#   ansible-vault encrypt group_vars/all/vault.yml
+# Or create it directly with:
+#   ansible-vault create group_vars/all/vault.yml
+vault_uf_admin_password: "change-me-8chars-minimum"

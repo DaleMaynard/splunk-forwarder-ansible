@@ -1,0 +1,144 @@
+---
+- name: Install the acl package so Ansible can switch to the splunk user
+  ansible.builtin.apt:
+    name: acl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check whether the forwarder is already installed
+  ansible.builtin.stat:
+    path: "{{ splunk_uf_install_dir }}/bin/splunk"
+  register: splunk_uf_bin
+
+- name: Check that the forwarder tarball exists (first install only)
+  ansible.builtin.stat:
+    path: "{{ splunk_uf_tarball }}"
+  register: splunk_uf_tarball_stat
+  when: not splunk_uf_bin.stat.exists
+
+- name: Stop with a clear message if the tarball is missing
+  ansible.builtin.fail:
+    msg: "Download the Linux 64-bit .tgz from splunk.com and save it as {{ splunk_uf_tarball }}"
+  when:
+    - not splunk_uf_bin.stat.exists
+    - not splunk_uf_tarball_stat.stat.exists
+
+- name: Create the Splunk service group
+  ansible.builtin.group:
+    name: "{{ splunk_uf_group }}"
+    system: true
+
+- name: Create the Splunk service user
+  ansible.builtin.user:
+    name: "{{ splunk_uf_user }}"
+    group: "{{ splunk_uf_group }}"
+    system: true
+    create_home: false
+    shell: /bin/bash
+
+- name: Unpack the forwarder
+  ansible.builtin.unarchive:
+    src: "{{ splunk_uf_tarball }}"
+    dest: "{{ splunk_uf_install_parent }}"
+    remote_src: true
+    owner: "{{ splunk_uf_user }}"
+    group: "{{ splunk_uf_group }}"
+    creates: "{{ splunk_uf_install_dir }}/bin/splunk"
+
+- name: Check whether the admin account already exists
+  ansible.builtin.stat:
+    path: "{{ splunk_uf_install_dir }}/etc/passwd"
+  register: splunk_uf_passwd
+
+- name: Seed the forwarder admin account (first start only; Splunk deletes the seed file after use)
+  ansible.builtin.template:
+    src: user-seed.conf.j2
+    dest: "{{ splunk_uf_install_dir }}/etc/system/local/user-seed.conf"
+    owner: "{{ splunk_uf_user }}"
+    group: "{{ splunk_uf_group }}"
+    mode: "0600"
+    force: false
+  no_log: true
+  when: not splunk_uf_passwd.stat.exists
+
+- name: Write the forwarder configuration
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ splunk_uf_install_dir }}/etc/system/local/{{ item }}"
+    owner: "{{ splunk_uf_user }}"
+    group: "{{ splunk_uf_group }}"
+    mode: "0644"
+  loop:
+    - outputs.conf
+    - inputs.conf
+  notify: Restart Splunk forwarder
+
+- name: Start the forwarder once to generate its keys and accept the license
+  ansible.builtin.command:
+    cmd: "{{ splunk_uf_install_dir }}/bin/splunk start --accept-license --answer-yes --no-prompt"
+    creates: "{{ splunk_uf_install_dir }}/etc/auth/splunk.secret"
+  become: true
+  become_user: "{{ splunk_uf_user }}"
+
+- name: Check whether the systemd unit exists
+  ansible.builtin.stat:
+    path: /etc/systemd/system/SplunkForwarder.service
+  register: splunk_uf_unit
+  when: splunk_uf_enable_boot_start | bool
+
+- name: Stop the forwarder before enabling boot-start
+  ansible.builtin.command:
+    cmd: "{{ splunk_uf_install_dir }}/bin/splunk stop"
+  become: true
+  become_user: "{{ splunk_uf_user }}"
+  changed_when: true
+  when: splunk_uf_enable_boot_start | bool and not splunk_uf_unit.stat.exists
+
+- name: Enable boot-start with systemd
+  ansible.builtin.command:
+    cmd: >-
+      {{ splunk_uf_install_dir }}/bin/splunk enable boot-start
+      -user {{ splunk_uf_user }}
+      -systemd-managed 1
+      -systemd-unit-file-name SplunkForwarder
+      --accept-license --answer-yes --no-prompt
+    creates: /etc/systemd/system/SplunkForwarder.service
+  when: splunk_uf_enable_boot_start | bool
+
+- name: Make sure the forwarder service is running and enabled
+  ansible.builtin.systemd:
+    name: SplunkForwarder
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: splunk_uf_enable_boot_start | bool
+
+- name: Check whether the forwarder is running (hosts without systemd)
+  ansible.builtin.command:
+    cmd: "{{ splunk_uf_install_dir }}/bin/splunk status"
+  become: true
+  become_user: "{{ splunk_uf_user }}"
+  register: splunk_uf_status
+  changed_when: false
+  failed_when: false
+  when: not (splunk_uf_enable_boot_start | bool)
+
+- name: Start the forwarder if it is not running (hosts without systemd)
+  ansible.builtin.command:
+    cmd: "{{ splunk_uf_install_dir }}/bin/splunk start --accept-license --answer-yes --no-prompt"
+  become: true
+  become_user: "{{ splunk_uf_user }}"
+  changed_when: true
+  when:
+    - not (splunk_uf_enable_boot_start | bool)
+    - splunk_uf_status.rc != 0
+
+- name: Apply any pending restarts before verifying
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait until the forwarder reports a connection to the indexer
+  ansible.builtin.wait_for:
+    path: "{{ splunk_uf_install_dir }}/var/log/splunk/splunkd.log"
+    search_regex: "Connected to idx={{ splunk_uf_indexer_host | regex_escape }}:{{ splunk_uf_indexer_port }}"
+    timeout: 120

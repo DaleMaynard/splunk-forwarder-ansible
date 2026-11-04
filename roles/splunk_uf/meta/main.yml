@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  author: Dale Maynard
+  description: Install and configure the Splunk Universal Forwarder on Ubuntu.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - splunk
+    - observability
+dependencies: []

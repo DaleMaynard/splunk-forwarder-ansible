@@ -1,0 +1,28 @@
+---
+# Where the forwarder is installed and who runs it.
+splunk_uf_install_parent: /opt
+splunk_uf_install_dir: "{{ splunk_uf_install_parent }}/splunkforwarder"
+splunk_uf_user: splunk
+splunk_uf_group: splunk
+
+# The Linux .tgz you download from splunk.com and place on the host before the first run.
+splunk_uf_tarball: /tmp/splunkforwarder.tgz
+
+# Where to send data. Default: the machine's default gateway, which from WSL2 is the Windows host.
+splunk_uf_indexer_host: "{{ ansible_facts['default_ipv4']['gateway'] }}"
+splunk_uf_indexer_port: 9997
+
+# Local forwarder admin account. The password comes from the vault (see group_vars/all/main.yml).
+splunk_uf_admin_user: admin
+
+# true: install a systemd unit and start on boot. false: just start the forwarder (for hosts without systemd).
+splunk_uf_enable_boot_start: true
+
+# Files the forwarder watches. Add or remove entries per host or group.
+splunk_uf_monitors:
+  - path: /var/log/dpkg.log
+    index: app_logs
+    sourcetype: linux:dpkg
+  - path: /var/log/syslog
+    index: app_logs
+    sourcetype: linux:syslog

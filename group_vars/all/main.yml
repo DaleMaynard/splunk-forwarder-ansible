@@ -1,0 +1,4 @@
+---
+# Non-secret settings shared by every forwarder host.
+# The admin password lives in group_vars/all/vault.yml (encrypted, never committed).
+splunk_uf_admin_password: "{{ vault_uf_admin_password }}"
